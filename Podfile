@@ -6,5 +6,6 @@ target 'Sample-Chart' do
   use_frameworks!
 
   pod 'SnapKit'
+  pod 'AMPopTip'
 
 end

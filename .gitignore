@@ -1,2 +1,5 @@
 Pods/
 Build/
+DerivedData/
+Sample-Chart.xcodeproj/xcuserdata/
+Sample-Chart.xcworkspace/xcuserdata/
