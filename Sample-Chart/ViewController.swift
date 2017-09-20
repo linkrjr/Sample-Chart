@@ -26,8 +26,10 @@ class Cell: UICollectionViewCell {
     private var animate = true
     
     private let NUMBER_LABEL_HEIGHT: CGFloat = 20
+    private let TOPTIP_HEIGHT: CGFloat = 40
     
-    private var barViewHeight: CGFloat {
+    private var initialBarViewY: CGFloat  { return TOPTIP_HEIGHT }
+    private var maxBarViewHeight: CGFloat {
         return self.bounds.height - NUMBER_LABEL_HEIGHT
     }
     
@@ -38,6 +40,7 @@ class Cell: UICollectionViewCell {
     }()
     
     private let barView: UIView = UIView(frame: CGRect.zero)
+    private let selectedBarView: UIView = UIView(frame: CGRect.zero)
     private let shadowBarView: UIView = UIView(frame: CGRect.zero)
     
     private var label: UILabel = {
@@ -45,6 +48,13 @@ class Cell: UICollectionViewCell {
         label.textAlignment = .center
         label.textColor = .white
         return label
+    }()
+    
+    var showTempLabel: Bool = false
+    private var tempLabel: UILabel = {
+        let tempLabel = UILabel()
+        tempLabel.textColor = .white
+        return tempLabel
     }()
     
     var highestTransaction: Transaction!
@@ -85,24 +95,34 @@ class Cell: UICollectionViewCell {
     
     override func layoutSubviews() {
         
+        if self.showTempLabel {
+            self.tempLabel.text = "\(self.transaction.total)"
+            self.addSubview(self.tempLabel)
+            
+            self.tempLabel.snp.makeConstraints { make in
+                make.left.top.right.equalToSuperview()
+                make.height.equalTo(TOPTIP_HEIGHT)
+            }
+        }
+        
         self.label.text = String(self.transaction.time)
         
-        self.barView.frame = CGRect(x: Int(self.bounds.width/2)-Int(30/2), y: Int(self.barViewHeight), width: 30, height: 0)
         let newBarViewFrame = calculateBarViewRect()
-        if animate {
-            UIView.animate(withDuration: 2) {
-                self.barView.frame = newBarViewFrame.insetBy(dx: 5, dy: 0)
-            }
-            self.animate = false
-        } else {
-            self.barView.frame = newBarViewFrame.insetBy(dx: 5, dy: 0)
-        }
-        self.barView.layer.mask = self.layerMask(self.barView.bounds)
+        
         self.barView.backgroundColor = .white
-        self.barView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(showBallon)))
+        self.barView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(Cell.showBallon(sender:))))
+        self.barView.frame = newBarViewFrame
+        self.barView.layer.mask = self.layerMask(self.barView.bounds)
+        self.barView.isExclusiveTouch = true
 
-        self.addSubview(self.barView)
-        self.addSubview(self.label)
+        self.selectedBarView.backgroundColor = .green
+        self.selectedBarView.frame = newBarViewFrame
+        self.selectedBarView.isHidden = true
+        self.selectedBarView.layer.mask = self.layerMask(self.selectedBarView.bounds)
+        
+        self.contentView.addSubview(self.barView)
+//        self.contentView.addSubview(self.selectedBarView)
+        self.contentView.addSubview(self.label)
         
         self.label.snp.makeConstraints { make in
             make.top.equalTo(self.barView.snp.bottom)
@@ -113,19 +133,33 @@ class Cell: UICollectionViewCell {
     }
     
     private func calculateBarViewRect() -> CGRect {
-        let totalHeight = (self.barViewHeight * CGFloat(self.transaction.total))/CGFloat(self.highestTransaction.total)        
-        let height = totalHeight <= 40 ? -40 : Int(-(totalHeight - 40))
-        return CGRect(x: Int(self.bounds.width/2)-Int(30/2), y: Int(self.barViewHeight), width: 30, height: height)
+        let height = ((self.maxBarViewHeight - initialBarViewY) * CGFloat(self.transaction.total))/CGFloat(self.highestTransaction.total)
+        return CGRect(x: Int(self.bounds.width/2)-Int(30/2), y: Int(self.maxBarViewHeight), width: 30, height: Int(-height))
     }
     
     func hidePopTip(notification: Notification) {
-        self.popTip.hide()
+        guard let userInfo = notification.userInfo, let sender = userInfo["sender"] as? PopTip else { return }
+        if sender == self.popTip {
+            self.barView.backgroundColor = .green
+        } else {
+            self.popTip.hide()
+        }
     }
     
-    func showBallon() {
-//        NotificationCenter.default.post(name: NSNotification.Name("HidePopTipNotification"), object: nil)
-        self.barView.backgroundColor = .green
-        self.popTip.show(text: self.transaction.formattedTotal, direction: .up, maxWidth: 400, in: self, from: self.barView.frame)
+    func showBallon(sender: AnyObject) {
+//        if self.popTip.isVisible {
+//            self.popTip.hide()
+//        } else {
+            NotificationCenter.default.post(name: NSNotification.Name("HidePopTipNotification"), object: nil, userInfo: ["sender": self.popTip])
+
+//            self.selectedBarView.isHidden = false
+            self.barView.backgroundColor = .green
+            
+            self.popTip.show(text: self.transaction.formattedTotal, direction: .up, maxWidth: 400, in: self, from: self.barView.frame)
+            
+            self.barView.setNeedsLayout()
+//            self.barView.layoutIfNeeded()
+//        }
     }
     
 }
@@ -144,13 +178,16 @@ class ViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        self.view.backgroundColor = .blue
+        self.view.backgroundColor = .white
         
         let times: [Int] = [6, 7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5]
         
         self.transactions = times.map { time -> Transaction in
+//            return Transaction(total: 0, time: time)
             return Transaction(total: Double(arc4random_uniform(200)), time: time)
         }
+//        self.transactions[0] = Transaction(total: Double(100), time: 6)
+        
         self.highestTransaction = calculateHighestTransaction()
         
         let layout = CustomLayout()
@@ -159,8 +196,9 @@ class ViewController: UIViewController {
         layout.headerReferenceSize = CGSize(width: 0, height: 50)
         
         self.collectionView = UICollectionView(frame: CGRect.zero, collectionViewLayout: layout)
-        
-        self.collectionView?.backgroundColor = .clear
+        self.collectionView?.allowsSelection = false
+        self.collectionView?.backgroundColor = .blue
+        self.collectionView?.showsHorizontalScrollIndicator = false
         self.collectionView?.register(Cell.self, forCellWithReuseIdentifier: Cell.reuseIdentifier)
         self.collectionView?.dataSource = self
         self.collectionView?.delegate = self
@@ -205,6 +243,7 @@ extension ViewController: UICollectionViewDataSource {
         cell.reset()
         cell.transaction = self.transaction(for: indexPath)
         cell.highestTransaction = self.highestTransaction
+//        cell.showTempLabel = true
         return cell
     }
     
